@@ -10,6 +10,8 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import os
+import subprocess
 import serial
 import socket
 import usb.core
@@ -389,3 +391,33 @@ if _WIN32PRINT:
             if self.hPrinter is None:
                 raise Exception("Printer job not opened")
             win32print.WritePrinter(self.hPrinter, msg)
+
+
+class CupsLP(Escpos):
+    def __init__(self, name: str, auto_flush=True, lp_option=['lp', '-o', '-raw'], *args, **kwargs):
+        Escpos.__init__(self, *args, **kwargs)
+        self.auto_flush = auto_flush
+        self.lp_option = lp_option
+        self.lp_option.extend(['-d', name])
+        self.open()
+
+    def open(self):
+        self.lp = subprocess.Popen(
+            self.lp_option, stdin=subprocess.PIPE, stdout=open(os.devnull, 'w'))
+
+    def close(self):
+        self.lp.terminate()
+
+    def flush(self):
+        if self.lp.stdin.closed is False:
+            self.lp.stdin.close()
+        self.lp.wait()
+        self.open()
+
+    def _raw(self, msg):
+        if self.lp.stdin.writable():
+            self.lp.stdin.write(msg)
+        else:
+            raise Exception("Not a valid pipe for lp process")
+        if self.auto_flush:
+            self.flush()
